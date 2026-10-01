@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-amber-50 text-stone-900 antialiased;
+    /* CJK first-class: Cantonese glyphs fall through to PingFang / Noto Sans HK
+       before the generic sans stack, so mixed 中英 text keeps one visual rhythm. */
+    font-family:
+      ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+      'PingFang HK', 'PingFang SC', 'Noto Sans HK', 'Noto Sans CJK HK',
+      'Microsoft JhengHei', 'Hiragino Sans HK', Arial, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior-y: none;
+  }
+
+  /* Prevent iOS Safari auto-zoom on focus; 16px is the threshold. */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  ::selection {
+    background-color: theme('colors.amber.200');
+  }
+
+  /* Subtle card scrollbar for sheet lists. */
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: theme('colors.stone.300');
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Cantonese labels sit tighter than Latin ones; give them a touch more room. */
+  :lang(zh-HK) h1,
+  :lang(zh-HK) h2 {
+    letter-spacing: 0;
+  }
+}
+
+@layer utilities {
+  /* Horizontal chip rows that scroll without a visible bar. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Respect the phone's home-indicator area under the bottom nav. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
