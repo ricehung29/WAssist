@@ -13,13 +13,28 @@ import {
 } from '../store'
 import { ensureExactAlarms, ensureReminderPermission } from '../utils/notify'
 import { isNativeOrMobile } from '../utils/whatsapp'
+import { installed, targetSelectionSupported } from '../composables/useWaTarget'
 import { LOCALES, t, syncDocumentLang, type Locale } from '../utils/i18n'
+import type { WaTargetPreference } from '../types'
 
 const emit = defineEmits<{ close: [] }>()
 
 const importText = ref('')
 const showImport = ref(false)
 const message = ref('')
+
+/** Both builds detected on this device — the only case where "ask" is useful. */
+const bothAppsInstalled = computed(() => installed.value.whatsapp && installed.value.business)
+
+/** Choices offered for the sender app, hiding apps that are not installed. */
+const targetChoices = computed<{ id: WaTargetPreference; label: string }[]>(() => {
+  const { whatsapp, business } = installed.value
+  const choices: { id: WaTargetPreference; label: string }[] = []
+  if (whatsapp || !business) choices.push({ id: 'whatsapp', label: t('wa.personal') })
+  if (business || !whatsapp) choices.push({ id: 'business', label: t('wa.business') })
+  if (bothAppsInstalled.value) choices.push({ id: 'ask', label: t('settings.waAsk') })
+  return choices
+})
 
 /** Ourselves so the <html lang> attribute follows the picker. */
 const locale = computed(() => state.settings.locale)
@@ -173,6 +188,30 @@ async function reset() {
         </div>
         <p class="mt-1 text-[11px] text-stone-400">
           {{ t('settings.waHint') }}
+        </p>
+      </div>
+
+      <div v-if="targetSelectionSupported && targetChoices.length > 1">
+        <p class="text-xs font-bold uppercase tracking-wider text-stone-500">
+          {{ t('settings.waApp') }}
+        </p>
+        <div class="mt-1 grid gap-1.5" :class="targetChoices.length === 3 ? 'grid-cols-3' : 'grid-cols-2'">
+          <button
+            v-for="choice in targetChoices"
+            :key="choice.id"
+            class="rounded-xl px-1 py-2 text-xs font-bold transition active:scale-95"
+            :class="
+              state.settings.waTarget === choice.id
+                ? 'bg-stone-900 text-white'
+                : 'bg-stone-50 text-stone-500 ring-1 ring-stone-200/60'
+            "
+            @click="updateSettings({ waTarget: choice.id })"
+          >
+            {{ choice.label }}
+          </button>
+        </div>
+        <p class="mt-1 text-[11px] text-stone-400">
+          {{ t('settings.waAppHint') }}
         </p>
       </div>
 

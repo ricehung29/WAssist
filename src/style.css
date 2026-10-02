@@ -65,4 +65,16 @@
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+
+  /* Keep the header clear of a notch / status bar in standalone PWA mode,
+     where the page really does extend to the top edge of the screen. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Grow a fixed element so its visible edge sits past the home indicator
+     instead of underneath it. */
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }

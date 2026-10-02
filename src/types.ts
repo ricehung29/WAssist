@@ -19,6 +19,13 @@ export interface MessageTemplate {
 
 export type QueueStatus = 'pending' | 'sent' | 'skipped' | 'snoozed'
 
+/**
+ * Which WhatsApp build to hand messages to. `ask` prompts per send (only on
+ * Android, and only when both apps are actually installed).
+ */
+export type WaTarget = 'whatsapp' | 'business'
+export type WaTargetPreference = WaTarget | 'ask'
+
 export interface QueueItem {
   id: string
   contactId: string
@@ -46,6 +53,8 @@ export interface Settings {
   defaultPrefix: string
   /** Deep-link strategy: auto = native scheme on mobile, wa.me on desktop. */
   whatsappMode: 'auto' | 'native' | 'web'
+  /** Default app for sends: a specific WhatsApp build, or ask each time. */
+  waTarget: WaTargetPreference
   /** First message of the day, "HH:MM" local. */
   startTime: string
   /** Minutes between consecutive queue items (anti-spam pacing). */

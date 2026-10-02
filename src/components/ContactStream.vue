@@ -13,7 +13,7 @@ import {
   isToday,
 } from '../store'
 import { t } from '../utils/i18n'
-import { launchWhatsApp, openChat } from '../utils/whatsapp'
+import { openChatWith, sendMessage } from '../composables/useWaTarget'
 import { queueItemText } from '../utils/message'
 import SwipeRow from './SwipeRow.vue'
 import ContactSheet from './ContactSheet.vue'
@@ -47,7 +47,7 @@ function fmtDay(iso: string) {
 }
 
 async function sendNow(q: QueueItem) {
-  launchWhatsApp(q.phone, q.finalRenderedText, state.settings.whatsappMode)
+  await sendMessage(q.phone, q.finalRenderedText)
   await markSent(q.id)
 }
 
@@ -59,7 +59,7 @@ function queueAgain(contactId: string) {
 
 /** Jump straight into the WhatsApp thread, nothing prefilled. */
 function chatNow(phone: string) {
-  openChat(phone, state.settings.whatsappMode)
+  void openChatWith(phone)
 }
 
 function isFavorite(contactId: string): boolean {

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- API 23+: the status bar is painted light, so its glyphs must go dark or
+         they disappear into the background. The navigation bar stays on the
+         darker fallback — windowLightNavigationBar needs API 27. -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/appBackground</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@color/appBackground</item>
+        <item name="android:navigationBarColor">@color/barFallback</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
+        <item name="windowSplashScreenBackground">@color/appBackground</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:statusBarColor">@color/appBackground</item>
+        <item name="android:navigationBarColor">@color/barFallback</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

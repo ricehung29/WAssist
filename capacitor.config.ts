@@ -6,6 +6,9 @@ const config: CapacitorConfig = {
   appId: 'com.launchpad.morning',
   appName: 'WAssist',
   webDir: 'dist',
+  // Paint the WebView the same amber as the page top so overscroll / resize
+  // flashes blend in instead of showing white (web) or black (old default).
+  backgroundColor: '#FFFBEB',
 }
 
 export default config

@@ -22,6 +22,7 @@ import SmartPasteSheet from './components/SmartPasteSheet.vue'
 import TemplateSheet from './components/TemplateSheet.vue'
 import SettingsSheet from './components/SettingsSheet.vue'
 import FollowUpSheet from './components/FollowUpSheet.vue'
+import SenderPickerSheet from './components/SenderPickerSheet.vue'
 import {
   state,
   addContact,
@@ -36,6 +37,7 @@ import {
 import type { AllTab } from './types'
 import { t } from './utils/i18n'
 import { useClipboardWatcher } from './composables/useClipboardWatcher'
+import { pendingSend, probeWhatsAppApps } from './composables/useWaTarget'
 import { ensureReminderPermission } from './utils/notify'
 
 const { detected, dismiss } = useClipboardWatcher(() => state.settings.defaultPrefix)
@@ -65,6 +67,8 @@ const TABS: { id: AllTab; icon: typeof Rocket; labelKey: string }[] = [
 
 // Ask once, on first paint, so passive alarms can be armed later.
 void ensureReminderPermission()
+// Which WhatsApp builds exist here — decides whether sends must ask.
+void probeWhatsAppApps()
 
 function onSent(itemId: string) {
   pendingFollowUp.value = itemId
@@ -88,7 +92,7 @@ async function acceptClipboard() {
 </script>
 
 <template>
-  <div class="min-h-dvh bg-gradient-to-b from-amber-50 via-amber-50 to-orange-50 text-stone-900">
+  <div class="pt-safe min-h-dvh bg-gradient-to-b from-amber-50 via-amber-50 to-orange-50 text-stone-900">
     <div class="mx-auto w-full max-w-md px-4 pb-32 pt-4">
       <!-- Header -->
       <header class="flex items-center justify-between">
@@ -271,5 +275,7 @@ async function acceptClipboard() {
       @pick="pickFollowUp"
       @close="pendingFollowUp = null"
     />
+    <!-- Only appears when a send is waiting on which WhatsApp app to use. -->
+    <SenderPickerSheet v-if="pendingSend" />
   </div>
 </template>

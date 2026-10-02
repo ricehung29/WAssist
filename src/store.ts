@@ -34,6 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
   locale: 'zh-HK',
   defaultPrefix: '852',
   whatsappMode: 'auto',
+  waTarget: 'ask',
   startTime: '09:30',
   staggerMinutes: 5,
   notificationsEnabled: true,
@@ -93,6 +94,13 @@ export function hydrate(saved: Partial<PersistedState> | null): PersistedState {
   // (or with a bogus locale from a hand-edited backup).
   if (settings.locale !== 'en' && settings.locale !== 'zh-HK') {
     settings.locale = base.settings.locale
+  }
+  if (
+    settings.waTarget !== 'ask' &&
+    settings.waTarget !== 'whatsapp' &&
+    settings.waTarget !== 'business'
+  ) {
+    settings.waTarget = base.settings.waTarget
   }
   return {
     contacts,

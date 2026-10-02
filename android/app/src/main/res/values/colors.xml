@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the web app's `from-amber-50` top edge, so the status bar reads
+         as part of the header instead of a black strip above it. -->
+    <color name="appBackground">#FFFBEB</color>
+    <!-- Matches the white bottom tab bar, so the system navigation bar looks
+         like a continuation of the app's own nav. -->
+    <color name="appNavBar">#FFFFFF</color>
+    <!-- Used below API 23/27, where the light-icon flags do not exist yet. -->
+    <color name="barFallback">#B45309</color>
+
+    <!-- Was previously inherited from the Capacitor library defaults, which is
+         why the bars picked up an unrelated dark colour. -->
+    <color name="colorPrimary">#F59E0B</color>
+    <color name="colorPrimaryDark">#B45309</color>
+    <color name="colorAccent">#10B981</color>
+</resources>

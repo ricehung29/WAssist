@@ -9,14 +9,35 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
-    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <!--
+      The live theme: BridgeActivity swaps to this in onCreate.
+
+      This is the pre-API-23 fallback. The app's bars follow the light amber
+      design, but light *icons* on a light bar need an API-23 flag (and the
+      navigation-bar one needs API 27), so on older releases the bars fall back
+      to a darker shade that light icons can still read against. The versioned
+      folders below lighten each bar as soon as its flag exists.
+
+      Light bars matter here because the previous DayNight parent let the OS
+      paint the status bar with an inherited dark `colorPrimaryDark` — the black
+      strip that showed up above the amber header on Samsung devices.
+    -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <item name="android:background">@null</item>
+        <item name="android:windowBackground">@color/appBackground</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@color/barFallback</item>
+        <item name="android:navigationBarColor">@color/barFallback</item>
     </style>
-
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <item name="windowSplashScreenBackground">@color/appBackground</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <!-- Bars stay matched while the splash is up, so there is no dark flash
+             on the way into the web view. -->
+        <item name="android:statusBarColor">@color/barFallback</item>
+        <item name="android:navigationBarColor">@color/barFallback</item>
     </style>
 </resources>

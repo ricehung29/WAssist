@@ -2,11 +2,11 @@
 import { Star } from 'lucide-vue-next'
 import { state, favoriteContacts } from '../store'
 import { t } from '../utils/i18n'
-import { openChat } from '../utils/whatsapp'
+import { openChatWith } from '../composables/useWaTarget'
 
 /** One tap → straight into the WhatsApp chat, no prefilled text. */
 function open(phone: string) {
-  openChat(phone, state.settings.whatsappMode)
+  void openChatWith(phone)
 }
 
 function initial(name: string): string {

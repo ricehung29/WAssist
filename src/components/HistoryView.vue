@@ -4,7 +4,7 @@ import { Check, X, Send, PenLine } from 'lucide-vue-next'
 import { state, sentCount, sentCountToday, pendingQueue } from '../store'
 import { t } from '../utils/i18n'
 import { queueItemText } from '../utils/message'
-import { launchWhatsApp } from '../utils/whatsapp'
+import { sendMessage } from '../composables/useWaTarget'
 
 const emit = defineEmits<{ compose: [] }>()
 const filter = ref<'all' | 'sent' | 'skipped'>('sent')
@@ -34,7 +34,7 @@ function fmt(iso: string) {
 }
 
 function reply(q: { phone: string; finalRenderedText: string }) {
-  launchWhatsApp(q.phone, q.finalRenderedText, state.settings.whatsappMode)
+  void sendMessage(q.phone, q.finalRenderedText)
 }
 </script>
 

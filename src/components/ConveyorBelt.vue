@@ -3,7 +3,8 @@ import { computed, ref } from 'vue'
 import { Rocket, Send, Timer, FastForward, RefreshCw, Copy, Check } from 'lucide-vue-next'
 import { state, nextUp, pendingQueue, sentCount, markSent, skipItem, rerollItem } from '../store'
 import { t } from '../utils/i18n'
-import { launchWhatsApp, copyMessage } from '../utils/whatsapp'
+import { copyMessage } from '../utils/whatsapp'
+import { sendMessage } from '../composables/useWaTarget'
 
 const emit = defineEmits<{ sent: [string]; compose: [] }>()
 
@@ -27,7 +28,8 @@ const currentNote = computed(() => {
 async function launchNext() {
   const item = nextUp.value
   if (!item) return
-  launchWhatsApp(item.phone, item.finalRenderedText, state.settings.whatsappMode)
+  // Awaits the sender picker when the user has to choose between the two apps.
+  await sendMessage(item.phone, item.finalRenderedText)
   await markSent(item.id)
   emit('sent', item.id)
 }

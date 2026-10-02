@@ -11,7 +11,7 @@ import {
   buildQueue,
   scheduleQueueReminders,
 } from '../store'
-import { openChat } from '../utils/whatsapp'
+import { openChatWith } from '../composables/useWaTarget'
 import { t } from '../utils/i18n'
 import { queueItemText } from '../utils/message'
 
@@ -54,7 +54,7 @@ function addTag(t: string) {
 }
 
 function chat() {
-  if (contact.value) openChat(contact.value.phone, state.settings.whatsappMode)
+  if (contact.value) void openChatWith(contact.value.phone)
 }
 
 async function queueNow() {
