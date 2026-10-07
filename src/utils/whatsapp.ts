@@ -91,6 +91,38 @@ export function buildWhatsAppLink(
 }
 
 /**
+ * Leave for WhatsApp without throwing the app away.
+ *
+ * On desktop — including an installed PWA window — assigning
+ * `window.location.href` navigated the queue itself to api.whatsapp.com:
+ * the belt lost the item it had just launched (it never reached `sent`) and
+ * the follow-up prompt never appeared. Hand off in a dedicated window
+ * instead, so the belt stays put behind WhatsApp Web. A blocked popup falls
+ * back to the old same-tab navigation.
+ *
+ * Phones keep `location.href`: the mobile flow already commits to not
+ * leaving stray tabs behind, and iOS blocks `window.open` once the
+ * user-gesture chain goes through an await.
+ */
+function handOff(link: string): void {
+  if (isNativeOrMobile()) {
+    window.location.href = link
+    return
+  }
+  const opened = window.open(link, '_blank')
+  if (!opened) {
+    window.location.href = link
+    return
+  }
+  // The new window should not be able to drive this one.
+  try {
+    opened.opener = null
+  } catch {
+    /* cross-origin windows may refuse the assignment */
+  }
+}
+
+/**
  * Fire the deep link.
  *
  * Navigating a webview straight to `whatsapp://` leaves a blank page behind if
@@ -118,7 +150,7 @@ export function launchWhatsApp(
     }, 1200)
     return link
   }
-  window.location.href = link
+  handOff(link)
   return link
 }
 
@@ -168,7 +200,7 @@ export function openChat(phone: string, mode: WhatsAppMode = 'auto'): string {
     }, 1200)
     return link
   }
-  window.location.href = link
+  handOff(link)
   return link
 }
 

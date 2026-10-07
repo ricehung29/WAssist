@@ -72,8 +72,12 @@ so nothing is ever auto-blasted and no accessibility service is involved.
 
 ## Quality gates in the wiring
 
-- **No leftover browser tabs** — mobile uses `whatsapp://`; the desktop `wa.me` fallback is only
-  reached when WhatsApp never took over (checked via `document.visibilityState` after handoff).
+- **The queue survives the hand-off** — mobile uses `whatsapp://` through an invisible iframe and
+  falls back to `wa.me` in a new tab only when WhatsApp never took over (checked via
+  `document.visibilityState` after a beat). Desktop — installed PWA window or browser tab — opens
+  WhatsApp Web in its own window rather than navigating the app's own tab to `api.whatsapp.com`,
+  which used to strand the belt mid-burst: the item never reached `sent` and the follow-up prompt
+  never appeared. A blocked popup degrades to the old same-tab navigation.
 - **Exact-alarm permission** — Android 12+ gates second-accurate alarms behind a separate setting.
   Toggling reminders in Config calls `checkExactNotificationSetting()` / `changeExactNotificationSetting()`
   and tells the user when the OS will batch instead.
