@@ -93,7 +93,7 @@ async function copyCurrent() {
       </p>
 
       <button
-        class="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 p-4 text-base font-extrabold text-white shadow-lg shadow-emerald-900/40 transition active:scale-[0.99]"
+        class="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 p-4 text-base font-extrabold text-white shadow-lg shadow-emerald-900/40 transition hover:from-emerald-300 hover:to-emerald-500 active:scale-[0.99]"
         @click="launchNext"
       >
         <Send class="h-5 w-5" /> {{ t('belt.launch') }}
@@ -101,20 +101,20 @@ async function copyCurrent() {
 
       <div class="mt-2 grid grid-cols-3 gap-2">
         <button
-          class="flex items-center justify-center gap-1 rounded-xl bg-stone-700/60 py-2 text-xs font-semibold ring-1 ring-stone-600/40 transition active:scale-95"
+          class="flex items-center justify-center gap-1 rounded-xl bg-stone-700/60 py-2 text-xs font-semibold ring-1 ring-stone-600/40 transition hover:bg-stone-600/70 active:scale-95"
           @click="snoozeCurrent"
         >
           <Timer class="h-4 w-4" /> {{ t('belt.snooze') }}
         </button>
         <button
-          class="flex items-center justify-center gap-1 rounded-xl bg-stone-700/60 py-2 text-xs font-semibold ring-1 ring-stone-600/40 transition active:scale-95"
+          class="flex items-center justify-center gap-1 rounded-xl bg-stone-700/60 py-2 text-xs font-semibold ring-1 ring-stone-600/40 transition hover:bg-stone-600/70 active:scale-95"
           @click="copyCurrent"
         >
           <Check v-if="copied" class="h-4 w-4 text-emerald-400" />
           <Copy v-else class="h-4 w-4" /> {{ copied ? t('belt.copied') : t('belt.copy') }}
         </button>
         <button
-          class="flex items-center justify-center gap-1 rounded-xl bg-stone-700/60 py-2 text-xs font-semibold ring-1 ring-stone-600/40 transition active:scale-95"
+          class="flex items-center justify-center gap-1 rounded-xl bg-stone-700/60 py-2 text-xs font-semibold ring-1 ring-stone-600/40 transition hover:bg-stone-600/70 active:scale-95"
           @click="skipNext"
         >
           <FastForward class="h-4 w-4" /> {{ t('belt.skip') }}
@@ -128,7 +128,7 @@ async function copyCurrent() {
     >
       <p class="text-sm font-medium text-stone-500">{{ t('belt.empty') }}</p>
       <button
-        class="mt-3 inline-flex items-center gap-1.5 rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-md shadow-emerald-200 transition active:scale-95"
+        class="mt-3 inline-flex items-center gap-1.5 rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-md shadow-emerald-200 transition hover:from-emerald-300 hover:to-emerald-500 active:scale-95"
         @click="emit('compose')"
       >
         <Send class="h-4 w-4" /> {{ t('belt.emptyCta') }}

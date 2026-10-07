@@ -78,3 +78,12 @@
     margin-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
+
+@layer base {
+  /* Keyboard focus has to be visible on desktop, where there is no tap
+     highlight to lean on. Touch never matches :focus-visible, so this stays
+     out of the way on phones. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-amber-400 ring-offset-2;
+  }
+}

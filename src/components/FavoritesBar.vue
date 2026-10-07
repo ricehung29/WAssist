@@ -27,7 +27,7 @@ function initial(name: string): string {
       <button
         v-for="c in favoriteContacts"
         :key="c.id"
-        class="flex w-16 shrink-0 flex-col items-center gap-1 transition active:scale-95"
+        class="flex w-16 shrink-0 flex-col items-center gap-1 transition hover:opacity-90 active:scale-95"
         @click="open(c.phone)"
       >
         <span

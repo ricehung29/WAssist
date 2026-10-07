@@ -14,6 +14,10 @@ const { offset, dragging, onTouchStart, onTouchMove, onTouchEnd } = useSwipe({
 </script>
 
 <template>
+  <!--
+    Swipe is the phone gesture; on a pointer device the same two actions are
+    already on the row as buttons, so nothing is lost when it is unused.
+  -->
   <div
     class="relative touch-pan-y"
     :style="{

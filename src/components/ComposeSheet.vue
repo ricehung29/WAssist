@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Plus, Search, UserPlus, Check, Tag } from 'lucide-vue-next'
 import ActionSheet from './ActionSheet.vue'
 import { state, addContact, queueCustomMessage, scheduleQueueReminders, buildContactTagList } from '../store'
@@ -17,6 +17,15 @@ const expanded = ref<string | null>(null)
 const tweaks = ref<Record<string, string>>({})
 const newName = ref('')
 const newPhone = ref('')
+const searchEl = ref<HTMLInputElement | null>(null)
+
+onMounted(() => {
+  // On a phone this would pop the keyboard over the sheet; on a desktop the
+  // user opened Compose to type, so put the caret where they are going next.
+  // (matchMedia is absent in jsdom, hence the guard.)
+  const finePointer = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches ?? false
+  if (finePointer) searchEl.value?.focus()
+})
 
 const prefix = computed(() => state.settings.defaultPrefix)
 const tagList = computed(() => buildContactTagList())
@@ -104,6 +113,17 @@ function pickAllVisible() {
   const ids = results.value.map((c) => c.id)
   picked.value = [...new Set([...picked.value, ...ids])]
 }
+
+/** Untick the visible page — the counterpart to "select all", for a mis-tap. */
+function clearVisible() {
+  const visible = new Set(results.value.map((c) => c.id))
+  picked.value = picked.value.filter((id) => !visible.has(id))
+}
+
+/** True when the visible page is already fully ticked. */
+const allVisiblePicked = computed(
+  () => results.value.length > 0 && results.value.every((c) => picked.value.includes(c.id)),
+)
 </script>
 
 <template>
@@ -127,6 +147,7 @@ function pickAllVisible() {
     <div class="mt-3 flex items-center gap-2 rounded-xl bg-stone-50 px-3 py-2">
       <Search class="h-4 w-4 shrink-0 text-stone-400" />
       <input
+        ref="searchEl"
         v-model="query"
         :placeholder="t('compose.searchPh')"
         class="w-full bg-transparent text-sm outline-none placeholder:text-stone-400"
@@ -172,12 +193,23 @@ function pickAllVisible() {
     </div>
 
     <!-- Recipient list -->
-    <div v-if="results.length > 1" class="mt-2 flex justify-end">
-      <button class="text-[11px] font-bold text-stone-500 underline-offset-2 hover:underline" @click="pickAllVisible">
+    <div v-if="results.length > 1" class="mt-2 flex justify-end gap-3">
+      <button
+        v-if="allVisiblePicked"
+        class="text-[11px] font-bold text-stone-500 underline-offset-2 hover:underline"
+        @click="clearVisible"
+      >
+        {{ t('compose.clearAll', { n: results.length }) }}
+      </button>
+      <button
+        v-else
+        class="text-[11px] font-bold text-stone-500 underline-offset-2 hover:underline"
+        @click="pickAllVisible"
+      >
         {{ t('compose.selectAll', { n: results.length }) }}
       </button>
     </div>
-    <ul class="mt-1 max-h-52 space-y-1.5 overflow-y-auto">
+    <ul class="mt-1 max-h-52 space-y-1.5 overflow-y-auto lg:max-h-72">
       <li v-for="c in results" :key="c.id" class="rounded-xl bg-stone-50 px-2 py-1.5 ring-1 ring-stone-200/60">
         <div class="flex items-center gap-2">
           <button

@@ -222,6 +222,36 @@ describe('WAssist dashboard', () => {
     wrapper.unmount()
   })
 
+  it('toggles select-all into clear-all for the visible page', async () => {
+    const wrapper = await mountApp()
+    await queueFromPaste(wrapper)
+    state.queue = []
+
+    await clickButton(wrapper, 'Compose')
+    await wrapper.find('textarea').setValue('Hi {{name}}!')
+    await flushPromises()
+
+    await clickButton(wrapper, 'Select all')
+    expect(wrapper.text()).toContain('2 recipients')
+    expect(wrapper.text()).toContain('Clear all')
+
+    await clickButton(wrapper, 'Clear all')
+    expect(wrapper.text()).not.toContain('2 recipients')
+    expect(wrapper.text()).toContain('Select all')
+    wrapper.unmount()
+  })
+
+  it('closes a sheet on Escape', async () => {
+    const wrapper = await mountApp()
+    await clickButton(wrapper, 'Compose')
+    expect(wrapper.find('[role=dialog]').exists()).toBe(true)
+
+    await wrapper.find('[role=dialog]').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+    expect(wrapper.find('[role=dialog]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('pins a contact to the favorites bar', async () => {
     const wrapper = await mountApp()
     await queueFromPaste(wrapper)
