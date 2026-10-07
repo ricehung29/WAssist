@@ -39,6 +39,26 @@ The dashboard is categorized into four tabs (persisted in `settings.activeTab`):
 | Send log + retention | [src/components/HistoryView.vue](src/components/HistoryView.vue) + `cleanupHistory()` / `sentCountToday` |
 | Config / backup | [src/components/SettingsSheet.vue](src/components/SettingsSheet.vue) |
 
+## Gemini skill
+
+`.gemini/skills/wassist/` is an [Agent Skill](https://agentskills.io) for driving mass sends from
+the Gemini CLI — recipient-line normalization, spintax linting and variant counting, pacing rules.
+It is workspace-tier inside this repo (gemini picks it over any copy elsewhere when run from
+here); `~/.gemini/skills/wassist` is a symlink to this folder, so it also loads from any directory.
+
+```bash
+# dry-run a template before queueing a batch
+node .gemini/skills/wassist/scripts/render.js lint  --template tpl.txt
+node .gemini/skills/wassist/scripts/render.js count --template tpl.txt --draws 20000 --target 120
+
+# repackage for a Gemini surface that accepts skill uploads
+cd .gemini/skills/wassist && zip -r wassist.zip . && cd -
+```
+
+`render.js` loads `node:fs` through a dynamic `import()` on purpose: this repo's
+`"type": "module"` and an extracted copy of the skill (no type field) disagree about what a
+`.js` file is, and only `import()` works in both.
+
 ## Architecture
 
 ```
