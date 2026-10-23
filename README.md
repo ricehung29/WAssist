@@ -18,7 +18,7 @@ The dashboard is categorized into four tabs (persisted in `settings.activeTab`):
 
 | Tab | What lives there |
 | :--- | :--- |
-| 🚀 **Send** | Pinned chats, conveyor belt, today's queue, Compose / Smart Paste / Templates launchers |
+| 🚀 **Send** | Pinned chats, conveyor belt, the queue grouped by day, Compose / Smart Paste / Templates launchers |
 | 👥 **People** | Contact cards with tags, swipe actions, detail sheet (note, tags, history, one-tap queue) |
 | 🔤 **Words** | Active template, template manager (spintax), personal quick-text shortcuts, cheat sheet |
 | 🕘 **History** | Send log with today/all-time/queued stats, sent/skipped filters, one-tap reply |
@@ -26,7 +26,7 @@ The dashboard is categorized into four tabs (persisted in `settings.activeTab`):
 | Spec | Where |
 | :--- | :--- |
 | 1 — Spintax engine | [src/utils/spintax.ts](src/utils/spintax.ts) — nested `{a\|b}`, `{{vars}}`, `sampleVariations()` for preview |
-| 2 — 1-click follow-up | [src/components/FollowUpSheet.vue](src/components/FollowUpSheet.vue) + `snoozeFollowUp()` in [src/store.ts](src/store.ts) |
+| 2 — 1-click follow-up | [src/components/FollowUpBar.vue](src/components/FollowUpBar.vue) + `snoozeFollowUp()` in [src/store.ts](src/store.ts) — inline bar, never a modal per send |
 | 3 — `whatsapp://` deep links | [src/utils/whatsapp.ts](src/utils/whatsapp.ts) — native scheme on mobile, `wa.me` on desktop, invisible-iframe handoff on native; `openChat()` for plain chat opens |
 | 4 — Clipboard + smart paste | [src/composables/useClipboardWatcher.ts](src/composables/useClipboardWatcher.ts), [src/components/SmartPasteSheet.vue](src/components/SmartPasteSheet.vue), [src/utils/sanitizer.ts](src/utils/sanitizer.ts) |
 | 5 — Card stream + micro-notes | [src/components/ContactStream.vue](src/components/ContactStream.vue), [src/components/SwipeRow.vue](src/components/SwipeRow.vue), [src/composables/useSwipe.ts](src/composables/useSwipe.ts) |
@@ -36,6 +36,7 @@ The dashboard is categorized into four tabs (persisted in `settings.activeTab`):
 | Conveyor belt | [src/components/ConveyorBelt.vue](src/components/ConveyorBelt.vue) |
 | Compose (1:1 / 1:many) | [src/components/ComposeSheet.vue](src/components/ComposeSheet.vue) + `queueCustomMessage()` (per-recipient overrides) in [src/store.ts](src/store.ts) |
 | Contact detail + tags | [src/components/ContactSheet.vue](src/components/ContactSheet.vue) + `buildContactTagList()` / `queueForContact()` |
+| Weekly sending schedule | [src/utils/schedule.ts](src/utils/schedule.ts) — per-weekday on/off + from/to windows, `allocateSlots()`; editor in [src/components/SettingsSheet.vue](src/components/SettingsSheet.vue), pre-queue preview in [src/components/SendPlan.vue](src/components/SendPlan.vue) |
 | Send log + retention | [src/components/HistoryView.vue](src/components/HistoryView.vue) + `cleanupHistory()` / `sentCountToday` |
 | Config / backup | [src/components/SettingsSheet.vue](src/components/SettingsSheet.vue) |
 
@@ -67,6 +68,7 @@ src/
   db.ts                       Dexie (IndexedDB) persistence + LocalStorage fallback, debounced saver
   store.ts                    Single reactive source of truth for contacts / templates / queue
   utils/spintax.ts            Spintax + variable resolution
+  utils/schedule.ts           Weekly windows: slot allocation, day grouping, follow-up moments
   utils/sanitizer.ts          Phone cleaning, smart-paste parser, clipboard detection
   utils/whatsapp.ts           Deep-link construction + launch handoff (+ plain chat opens)
   utils/notify.ts             Passive alarm layer (native plugin + web fallback)
@@ -75,7 +77,8 @@ src/
   composables/useClipboardWatcher.ts
   components/                 App has 4 category tabs: FavoritesBar, ConveyorBelt, ContactStream,
                               ShortcutsBar, HistoryView, SwipeRow, ContactSheet, ActionSheet,
-                              ComposeSheet, SmartPasteSheet, TemplateSheet, SettingsSheet, FollowUpSheet
+                              ComposeSheet, SmartPasteSheet, SendPlan, TemplateSheet, SettingsSheet,
+                              FollowUpBar, DeferSheet
   App.vue                     Tab shell (Send / People / Words / History) + sheet orchestration
 ```
 
@@ -104,7 +107,31 @@ so nothing is ever auto-blasted and no accessibility service is involved.
 - **Notification channel** — created on first permission request, otherwise Android 8+ silently
   drops the notification.
 - **Today-only conveyor belt** — `pendingQueue` filters to today's local calendar day, so a
-  follow-up scheduled for next week never blocks this morning's run.
+  follow-up scheduled for next week never blocks this morning's run. The belt shows when its head
+  is due and how many messages sit on later days (`futureQueue`).
+
+## Sending schedule
+
+Each weekday gets its own on/off toggle and its own window (`settings.schedule`, seven entries keyed
+by `Date#getDay()`), each row of the settings sheet being "Mon 09:30 → 21:00". `allocateSlots()` in
+[src/utils/schedule.ts](src/utils/schedule.ts) lays a batch out at `staggerMinutes` apart inside
+those windows:
+
+- it starts no earlier than *now* (a slot never lands in the past) and rounds up to the next whole
+  minute;
+- it never reuses a minute already booked by a queued item (`bookedSlots()`);
+- when a day's window fills, it rolls into the next *open* day instead of spilling past midnight;
+- it refuses to invent days forever — the search is bounded, and `planSlots()` reports
+  `truncated: true` when a batch cannot fit, so the last slot is pinned rather than silently
+  stacking everyone on one minute.
+
+Because of that rollover, a batch larger than one day's window is normal, not a trap: the queue is
+grouped by calendar day with a time range and count per header, and **Sending plan** in Smart Paste
+and Compose previews exactly which days a batch will land on *before* it is queued. After a schedule
+change, **Re-pace the N queued messages** in settings re-lays everything still pending.
+
+A blob saved before weekly windows (single `settings.startTime`) is migrated on hydrate by folding
+that time into all seven days' start, so old installs keep their pacing.
 
 ## Native shells
 

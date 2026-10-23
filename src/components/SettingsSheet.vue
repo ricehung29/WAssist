@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Download, Upload, Bell, BellOff, RotateCcw, Languages } from 'lucide-vue-next'
+import { Download, Upload, Bell, BellOff, RotateCcw, Languages, CalendarClock } from 'lucide-vue-next'
 import ActionSheet from './ActionSheet.vue'
 import {
   state,
@@ -9,13 +9,15 @@ import {
   importBackup,
   resetAll,
   rescheduleAllReminders,
+  reschedulePending,
   cleanupHistory,
 } from '../store'
 import { ensureExactAlarms, ensureReminderPermission } from '../utils/notify'
 import { isNativeOrMobile } from '../utils/whatsapp'
 import { installed, targetSelectionSupported } from '../composables/useWaTarget'
 import { LOCALES, t, syncDocumentLang, type Locale } from '../utils/i18n'
-import type { WaTargetPreference } from '../types'
+import { WEEK_ORDER, weeklyCapacity } from '../utils/schedule'
+import type { DaySchedule, WaTargetPreference } from '../types'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -38,6 +40,45 @@ const targetChoices = computed<{ id: WaTargetPreference; label: string }[]>(() =
 
 /** Ourselves so the <html lang> attribute follows the picker. */
 const locale = computed(() => state.settings.locale)
+
+/** Days in Monday-first display order, resolved from the reactive schedule. */
+const week = computed(() =>
+  WEEK_ORDER.map((d) => ({
+    ...state.settings.schedule.find((s) => s.day === d)!,
+    label: t(`day.${d}`),
+  })),
+)
+
+const openDays = computed(() => week.value.filter((d) => d.enabled).length)
+const capacity = computed(() =>
+  weeklyCapacity(state.settings.schedule, state.settings.staggerMinutes),
+)
+const queuedCount = computed(
+  () => state.queue.filter((q) => q.status === 'pending' || q.status === 'snoozed').length,
+)
+
+/** Patch one day's window. Editing a time on a closed day opens it — the user clearly wants it. */
+function setDay(day: number, patch: Partial<DaySchedule>) {
+  const next = state.settings.schedule.map((d) => (d.day === day ? { ...d, ...patch } : d))
+  updateSettings({ schedule: next })
+}
+
+function toggleDay(day: number) {
+  const current = state.settings.schedule.find((d) => d.day === day)
+  if (!current) return
+  // Never leave the week with no open day — queueing would have nowhere to go.
+  const open = state.settings.schedule.filter((d) => d.enabled)
+  if (current.enabled && open.length === 1) {
+    message.value = t('settings.needOneDay')
+    return
+  }
+  setDay(day, { enabled: !current.enabled })
+}
+
+async function rePace() {
+  const n = await reschedulePending()
+  message.value = t('settings.rescheduled', { n })
+}
 
 function setLocale(id: Locale) {
   updateSettings({ locale: id })
@@ -122,35 +163,86 @@ async function reset() {
       </div>
 
       <div>
-        <p class="text-xs font-bold uppercase tracking-wider text-stone-500">
-          {{ t('settings.morning') }}
+        <p
+          class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-500"
+        >
+          <CalendarClock class="h-3.5 w-3.5" /> {{ t('settings.schedule') }}
         </p>
-        <div class="mt-1 flex gap-2">
-          <label class="flex-1">
-            <span class="text-[11px] text-stone-400">{{ t('settings.firstMsg') }}</span>
-            <input
-              type="time"
-              :value="state.settings.startTime"
-              class="mt-0.5 w-full rounded-xl bg-stone-50 px-3 py-2 text-sm ring-1 ring-stone-200/60 outline-none"
-              @input="updateSettings({ startTime: ($event.target as HTMLInputElement).value })"
-            />
-          </label>
-          <label class="flex-1">
-            <span class="text-[11px] text-stone-400">{{ t('settings.stagger') }}</span>
-            <input
-              type="number"
-              min="1"
-              max="60"
-              :value="state.settings.staggerMinutes"
-              class="mt-0.5 w-full rounded-xl bg-stone-50 px-3 py-2 text-sm ring-1 ring-stone-200/60 outline-none"
-              @input="
-                updateSettings({
-                  staggerMinutes: Math.max(1, Number(($event.target as HTMLInputElement).value) || 5),
-                })
+
+        <label class="mt-1 block">
+          <span class="text-[11px] text-stone-400">{{ t('settings.stagger') }}</span>
+          <input
+            type="number"
+            min="1"
+            max="60"
+            :value="state.settings.staggerMinutes"
+            class="mt-0.5 w-full rounded-xl bg-stone-50 px-3 py-2 text-sm ring-1 ring-stone-200/60 outline-none"
+            @input="
+              updateSettings({
+                staggerMinutes: Math.max(1, Number(($event.target as HTMLInputElement).value) || 5),
+              })
+            "
+          />
+        </label>
+
+        <!-- One row per weekday: on/off, then its own window. -->
+        <ul class="mt-2 space-y-1">
+          <li
+            v-for="d in week"
+            :key="d.day"
+            class="flex items-center gap-2 rounded-xl px-2 py-1.5"
+            :class="d.enabled ? 'bg-stone-50 ring-1 ring-stone-200/60' : 'bg-stone-50/50'"
+          >
+            <button
+              class="flex h-7 w-11 shrink-0 items-center justify-center rounded-lg text-[11px] font-extrabold transition"
+              :class="
+                d.enabled ? 'bg-emerald-500 text-white shadow-sm' : 'bg-stone-200 text-stone-400'
               "
-            />
-          </label>
-        </div>
+              :aria-label="`${t('day.' + d.day)} ${d.enabled ? t('settings.on') : t('settings.off')}`"
+              :aria-pressed="d.enabled"
+              @click="toggleDay(d.day)"
+            >
+              {{ d.label }}
+            </button>
+            <template v-if="d.enabled">
+              <input
+                type="time"
+                :value="d.startTime"
+                :aria-label="`${d.label} ${t('settings.from')}`"
+                class="min-w-0 flex-1 rounded-lg bg-white px-2 py-1 text-xs ring-1 ring-stone-200/60 outline-none"
+                @input="
+                  setDay(d.day, { startTime: ($event.target as HTMLInputElement).value || d.startTime })
+                "
+              />
+              <span class="text-[11px] text-stone-400">–</span>
+              <input
+                type="time"
+                :value="d.endTime"
+                :aria-label="`${d.label} ${t('settings.to')}`"
+                class="min-w-0 flex-1 rounded-lg bg-white px-2 py-1 text-xs ring-1 ring-stone-200/60 outline-none"
+                @input="
+                  setDay(d.day, { endTime: ($event.target as HTMLInputElement).value || d.endTime })
+                "
+              />
+            </template>
+            <span v-else class="flex-1 text-[11px] italic text-stone-400">
+              {{ t('settings.off') }}
+            </span>
+          </li>
+        </ul>
+
+        <p class="mt-1.5 text-[11px] text-stone-400">
+          {{ t('settings.capacity', { n: capacity, d: openDays }) }}
+        </p>
+        <p class="mt-1 text-[11px] text-stone-400">{{ t('settings.scheduleHint') }}</p>
+
+        <button
+          v-if="queuedCount"
+          class="mt-2 w-full rounded-xl bg-stone-100 py-2 text-xs font-bold text-stone-600 transition active:scale-[0.99]"
+          @click="rePace"
+        >
+          {{ t('settings.reschedule', { n: queuedCount }) }}
+        </button>
       </div>
 
       <div>

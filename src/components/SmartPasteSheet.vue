@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { Plus, ClipboardPaste, AlertTriangle } from 'lucide-vue-next'
 import ActionSheet from './ActionSheet.vue'
+import SendPlan from './SendPlan.vue'
 import { state, addContact, buildQueue, scheduleQueueReminders } from '../store'
 import { parseSmartPaste } from '../utils/sanitizer'
 import { sampleVariations } from '../utils/spintax'
@@ -96,6 +97,9 @@ async function addAll() {
         “{{ s }}”
       </p>
     </div>
+
+    <!-- Where these will actually land, given the weekly windows. -->
+    <SendPlan :count="parsed.length" />
 
     <button
       :disabled="!parsed.length"

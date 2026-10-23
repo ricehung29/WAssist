@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { Plus, Search, UserPlus, Check, Tag } from 'lucide-vue-next'
 import ActionSheet from './ActionSheet.vue'
+import SendPlan from './SendPlan.vue'
 import { state, addContact, queueCustomMessage, scheduleQueueReminders, buildContactTagList } from '../store'
 import { sanitizePhone, isValidPhone } from '../utils/sanitizer'
 import { renderTemplate } from '../utils/spintax'
@@ -256,6 +257,9 @@ const allVisiblePicked = computed(
           : t('compose.one')
       }}: {{ pickedContacts.map((c) => c.name).join(', ') }}
     </p>
+
+    <!-- Where these will actually land, given the weekly windows. -->
+    <SendPlan :count="picked.length" />
 
     <button
       :disabled="!message.trim() || !picked.length"

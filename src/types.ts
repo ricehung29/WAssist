@@ -37,6 +37,12 @@ export interface QueueItem {
   status: QueueStatus
   notificationId?: number
   followUpDays?: number
+  /**
+   * The run's topic, kept so a re-roll or a snooze re-renders with the same
+   * `{{topic}}` the message was queued with (Compose could not set one at all
+   * before, so older items simply have none).
+   */
+  topic?: string
 }
 
 /** A personal quick-text snippet — tap to copy, paste anywhere. */
@@ -44,6 +50,17 @@ export interface Snippet {
   id: string
   title: string
   body: string
+}
+
+/**
+ * One day's sending window. `day` follows `Date#getDay()`: 0 = Sunday … 6 = Saturday.
+ * `startTime` / `endTime` are local "HH:MM"; a disabled day is skipped entirely.
+ */
+export interface DaySchedule {
+  day: number
+  enabled: boolean
+  startTime: string
+  endTime: string
 }
 
 export interface Settings {
@@ -55,10 +72,13 @@ export interface Settings {
   whatsappMode: 'auto' | 'native' | 'web'
   /** Default app for sends: a specific WhatsApp build, or ask each time. */
   waTarget: WaTargetPreference
-  /** First message of the day, "HH:MM" local. */
-  startTime: string
   /** Minutes between consecutive queue items (anti-spam pacing). */
   staggerMinutes: number
+  /**
+   * Weekly sending windows. Replaces the single `startTime`; a legacy blob's
+   * `startTime` is folded into every day's window on hydrate.
+   */
+  schedule: DaySchedule[]
   /** Schedule passive OS-level reminders for queued items. */
   notificationsEnabled: boolean
   /** Open tab on launch. */

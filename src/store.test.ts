@@ -17,6 +17,9 @@ import {
   cleanupHistory,
   queueForContact,
   markSent,
+  planSlots,
+  deferItem,
+  reschedulePending,
 } from './store'
 
 describe('hydrate', () => {
@@ -58,6 +61,41 @@ describe('hydrate', () => {
     const s = hydrate(legacy)
     expect(s.settings.staggerMinutes).toBe(5)
     expect(s.settings.whatsappMode).toBe('auto')
+    expect(s.settings.schedule).toHaveLength(7)
+  })
+
+  it('folds a legacy single startTime into every day of the week', () => {
+    // Blobs from before weekly windows carry settings.startTime only.
+    const base = defaultState()
+    const legacy = {
+      ...base,
+      settings: { ...base.settings, schedule: undefined, startTime: '07:45' },
+    } as never
+    const s = hydrate(legacy)
+    expect(s.settings.schedule.map((d) => d.startTime)).toEqual(Array(7).fill('07:45'))
+    expect(s.settings.schedule.every((d) => d.enabled)).toBe(true)
+  })
+
+  it('coerces hand-edited settings instead of trusting them', () => {
+    const base = defaultState()
+    const junk = {
+      ...base,
+      settings: {
+        ...base.settings,
+        locale: 'klingon',
+        waTarget: 'carrier-pigeon',
+        staggerMinutes: 999,
+        retentionDays: -4,
+        schedule: [{ day: 1, enabled: false, startTime: 'nope', endTime: '' }],
+      },
+    } as never
+    const s = hydrate(junk)
+    expect(s.settings.locale).toBe('zh-HK')
+    expect(s.settings.waTarget).toBe('ask')
+    expect(s.settings.staggerMinutes).toBe(60)
+    expect(s.settings.retentionDays).toBe(0)
+    expect(s.settings.schedule).toHaveLength(7)
+    expect(s.settings.schedule[1]!.startTime).toBe('09:30')
   })
 
   it('drops legacy MIT / Emergency Mode keys from old blobs', () => {
@@ -87,6 +125,111 @@ describe('nextSlot', () => {
 
   it('never schedules in the past', () => {
     expect(nextSlot(0).getTime()).toBeGreaterThan(Date.now() - 1000)
+  })
+})
+
+describe('weekly windows and the queue', () => {
+  const at = (h: number, m = 0) => {
+    const d = new Date()
+    d.setHours(h, m, 0, 0)
+    return d
+  }
+
+  it('spreads a batch across days when one window cannot hold it', async () => {
+    await resetAll()
+    // A single 30-minute window today, 10 minutes apart → 4 slots a day.
+    const today = new Date().getDay()
+    state.settings.staggerMinutes = 10
+    state.settings.schedule = state.settings.schedule.map((d) =>
+      d.day === today
+        ? { ...d, enabled: true, startTime: '00:00', endTime: '00:30' }
+        : { ...d, enabled: false },
+    )
+
+    const ids = Array.from({ length: 6 }, (_, i) =>
+      addContact({ name: `P${i}`, phone: `8529123456${i}` }).id,
+    )
+    const items = queueCustomMessage(ids, 'Hi {{name}}')
+    const days = new Set(items.map((q) => new Date(q.scheduledTime).toDateString()))
+
+    expect(items).toHaveLength(6)
+    // Four today, two tomorrow — not six piled past midnight.
+    expect(days.size).toBe(2)
+    const todayCount = items.filter((q) => new Date(q.scheduledTime).getDate() === new Date().getDate())
+    expect(todayCount.length).toBeLessThanOrEqual(4)
+  })
+
+  it('never double-books a slot already used by an earlier batch', async () => {
+    await resetAll()
+    state.settings.staggerMinutes = 5
+    const a = addContact({ name: 'A', phone: '85291234561' })
+    const b = addContact({ name: 'B', phone: '85291234562' })
+
+    const [first] = queueCustomMessage([a.id], 'One')
+    const [second] = queueCustomMessage([b.id], 'Two')
+
+    expect(second!.scheduledTime).not.toBe(first!.scheduledTime)
+    expect(new Date(second!.scheduledTime).getTime()).toBeGreaterThan(
+      new Date(first!.scheduledTime).getTime(),
+    )
+  })
+
+  it('reports when a batch cannot fit the schedule at all', async () => {
+    await resetAll()
+    // One open day a week with a single slot: a 500-person batch overflows the
+    // one-year search horizon, and planSlots has to say so instead of silently
+    // stacking everyone on the same minute.
+    state.settings.staggerMinutes = 5
+    state.settings.schedule = state.settings.schedule.map((d) => ({
+      ...d,
+      enabled: d.day === 1,
+      startTime: '09:00',
+      endTime: '09:00',
+    }))
+
+    const plan = planSlots(500)
+    expect(plan.truncated).toBe(true)
+    expect(plan.slots.length).toBeGreaterThan(0)
+    expect(plan.slots.length).toBeLessThan(500)
+  })
+
+  it('moves a queued item later on Snooze without duplicating it', async () => {
+    await resetAll()
+    const ken = addContact({ name: 'Ken', phone: '85291234567' })
+    const [item] = queueCustomMessage([ken.id], 'Hi Ken')
+
+    const moved = await deferItem(item!.id, 1)
+    expect(state.queue).toHaveLength(1)
+    expect(moved!.id).toBe(item!.id)
+    expect(moved!.followUpDays).toBe(1)
+    expect(new Date(moved!.scheduledTime).getDate()).not.toBe(new Date().getDate())
+  })
+
+  it('re-paces queued items into a narrowed schedule', async () => {
+    await resetAll()
+    state.settings.staggerMinutes = 5
+    const ids = Array.from({ length: 3 }, (_, i) =>
+      addContact({ name: `R${i}`, phone: `8529000000${i}` }).id,
+    )
+    queueCustomMessage(ids, 'Hello {{name}}')
+
+    // Narrow to one 15-minute window a day at 30-minute gaps → one slot a day.
+    state.settings.staggerMinutes = 30
+    state.settings.schedule = state.settings.schedule.map((d) => ({
+      ...d,
+      startTime: '06:00',
+      endTime: '06:15',
+    }))
+    const moved = await reschedulePending()
+
+    expect(moved).toBe(3)
+    const days = new Set(
+      state.queue
+        .filter((q) => q.status === 'pending')
+        .map((q) => new Date(q.scheduledTime).toDateString()),
+    )
+    expect(days.size).toBe(3)
+    void at
   })
 })
 

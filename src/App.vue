@@ -21,7 +21,8 @@ import ComposeSheet from './components/ComposeSheet.vue'
 import SmartPasteSheet from './components/SmartPasteSheet.vue'
 import TemplateSheet from './components/TemplateSheet.vue'
 import SettingsSheet from './components/SettingsSheet.vue'
-import FollowUpSheet from './components/FollowUpSheet.vue'
+import FollowUpBar from './components/FollowUpBar.vue'
+import DeferSheet from './components/DeferSheet.vue'
 import SenderPickerSheet from './components/SenderPickerSheet.vue'
 import {
   state,
@@ -29,9 +30,10 @@ import {
   buildQueue,
   scheduleQueueReminders,
   snoozeFollowUp,
+  deferItem,
   setActiveTab,
   sentCountToday,
-  pendingQueue,
+  queueList,
   activeTemplate,
 } from './store'
 import type { AllTab } from './types'
@@ -46,7 +48,10 @@ const showPaste = ref(false)
 const showCompose = ref(false)
 const showTemplates = ref(false)
 const showSettings = ref(false)
+/** Item awaiting a follow-up choice after it went out. */
 const pendingFollowUp = ref<string | null>(null)
+/** Item awaiting a "move it later" choice — nothing was sent. */
+const pendingDefer = ref<string | null>(null)
 
 /** Persisted across restarts via settings.activeTab. */
 const tab = computed<AllTab>({
@@ -57,6 +62,7 @@ const tab = computed<AllTab>({
 const followUpName = computed(
   () => state.queue.find((q) => q.id === pendingFollowUp.value)?.name ?? '',
 )
+const deferName = computed(() => state.queue.find((q) => q.id === pendingDefer.value)?.name ?? '')
 
 const TABS: { id: AllTab; icon: typeof Rocket; labelKey: string }[] = [
   { id: 'send', icon: Rocket, labelKey: 'tab.send' },
@@ -78,6 +84,17 @@ async function pickFollowUp(days: number) {
   const id = pendingFollowUp.value
   pendingFollowUp.value = null
   if (id) await snoozeFollowUp(id, days)
+}
+
+/** Snooze from the belt: move the queued message, nothing is sent or duplicated. */
+function onDefer(itemId: string) {
+  pendingDefer.value = itemId
+}
+
+async function pickDefer(days: number) {
+  const id = pendingDefer.value
+  pendingDefer.value = null
+  if (id) await deferItem(id, days)
 }
 
 async function acceptClipboard() {
@@ -172,7 +189,7 @@ async function acceptClipboard() {
             {{ sentCountToday }} {{ t('stats.sentToday') }}
           </span>
           <span class="rounded-full bg-stone-900 px-2.5 py-1 text-white shadow-sm">
-            {{ pendingQueue.length }} {{ t('stats.queued') }}
+            {{ queueList.length }} {{ t('stats.queued') }}
           </span>
           <span class="rounded-full bg-white px-2.5 py-1 text-stone-500 shadow-sm ring-1 ring-stone-100">
             {{ state.contacts.length }} {{ t('stats.contacts') }}
@@ -208,7 +225,16 @@ async function acceptClipboard() {
           <!-- Two columns from lg: the belt (act) beside the queue (review). -->
           <div class="lg:mt-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
             <div class="mt-4 lg:mt-0">
-              <ConveyorBelt @sent="onSent" @compose="showCompose = true" />
+              <ConveyorBelt @sent="onSent" @defer="onDefer" @compose="showCompose = true" />
+
+              <!-- Post-send follow-up, as a bar: a modal per send would
+                   interrupt a 120-message run 119 times. -->
+              <FollowUpBar
+                v-if="pendingFollowUp"
+                :name="followUpName"
+                @pick="pickFollowUp"
+                @close="pendingFollowUp = null"
+              />
             </div>
 
             <div>
@@ -331,11 +357,11 @@ async function acceptClipboard() {
     <SmartPasteSheet v-if="showPaste" @close="showPaste = false" />
     <TemplateSheet v-if="showTemplates" @close="showTemplates = false" />
     <SettingsSheet v-if="showSettings" @close="showSettings = false" />
-    <FollowUpSheet
-      v-if="pendingFollowUp"
-      :name="followUpName"
-      @pick="pickFollowUp"
-      @close="pendingFollowUp = null"
+    <DeferSheet
+      v-if="pendingDefer"
+      :name="deferName"
+      @pick="pickDefer"
+      @close="pendingDefer = null"
     />
     <!-- Only appears when a send is waiting on which WhatsApp app to use. -->
     <SenderPickerSheet v-if="pendingSend" />

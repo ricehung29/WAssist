@@ -334,4 +334,85 @@ describe('WAssist dashboard', () => {
     expect(wrapper.text()).toContain('Ken')
     wrapper.unmount()
   })
+
+  it('shows the sending plan before a batch is queued', async () => {
+    const wrapper = await mountApp()
+    await clickButton(wrapper, 'Smart Paste')
+    await wrapper.find('textarea').setValue(PASTE)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Sending plan')
+    expect(wrapper.text()).toContain('Today')
+    expect(wrapper.text()).toContain('fit inside your sending windows')
+    wrapper.unmount()
+  })
+
+  it('keeps the follow-up prompt inline so a run is not interrupted per send', async () => {
+    const wrapper = await mountApp()
+    await queueFromPaste(wrapper)
+
+    await clickButton(wrapper, 'LAUNCH & SEND')
+    // A bar under the belt, not a modal over it.
+    expect(wrapper.find('[role=dialog]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Sent to Ken')
+
+    await clickButton(wrapper, 'Done / No Follow-up')
+    expect(wrapper.text()).not.toContain('Sent to Ken')
+    wrapper.unmount()
+  })
+
+  it('moves a queued message on Snooze instead of duplicating it', async () => {
+    const wrapper = await mountApp()
+    await queueFromPaste(wrapper)
+    const before = state.queue.length
+
+    await clickButton(wrapper, 'Snooze')
+    expect(wrapper.find('[role=dialog]').exists()).toBe(true)
+    await clickButton(wrapper, 'Move to tomorrow')
+
+    expect(state.queue).toHaveLength(before)
+    expect(state.queue.every((q) => q.status === 'pending')).toBe(true)
+    const moved = state.queue.find((q) => q.followUpDays === 1)!
+    expect(moved).toBeTruthy()
+    expect(pendingQueue.value.some((q) => q.id === moved.id)).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('lets a day be switched off in the sending schedule', async () => {
+    const wrapper = await mountApp()
+    await clickButton(wrapper, 'Settings')
+
+    const before = state.settings.schedule.filter((d) => d.enabled).length
+    const monday = wrapper.find('button[aria-label^="Mon"]')
+    expect(monday.exists()).toBe(true)
+    await monday.trigger('click')
+    await flushPromises()
+
+    expect(state.settings.schedule.filter((d) => d.enabled)).toHaveLength(before - 1)
+    expect(wrapper.text()).toContain('Capacity')
+    wrapper.unmount()
+  })
+
+  it('re-times a single queued message from its queue row', async () => {
+    const wrapper = await mountApp()
+    await queueFromPaste(wrapper)
+
+    const timeButton = wrapper.find('button[aria-label="Change time"]')
+    expect(timeButton.exists()).toBe(true)
+    await timeButton.trigger('click')
+
+    const input = wrapper.find('input[type="time"]')
+    expect(input.exists()).toBe(true)
+    await input.setValue('14:45')
+    // A time input commits on `change`, not on every keystroke.
+    await input.trigger('change')
+    await flushPromises()
+
+    // Ken moved to 14:45, so he is now *after* Mary — find him by name.
+    const ken = state.queue.find((q) => q.name === 'Ken')!
+    const at = new Date(ken.scheduledTime)
+    expect(at.getHours()).toBe(14)
+    expect(at.getMinutes()).toBe(45)
+    wrapper.unmount()
+  })
 })

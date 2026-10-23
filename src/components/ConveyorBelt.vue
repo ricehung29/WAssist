@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Rocket, Send, Timer, FastForward, RefreshCw, Copy, Check } from 'lucide-vue-next'
-import { state, nextUp, pendingQueue, sentCount, markSent, skipItem, rerollItem } from '../store'
+import { Rocket, Send, Timer, FastForward, RefreshCw, Copy, Check, Clock } from 'lucide-vue-next'
+import {
+  state,
+  nextUp,
+  pendingQueue,
+  futureQueue,
+  sentCount,
+  markSent,
+  skipItem,
+  rerollItem,
+} from '../store'
 import { t } from '../utils/i18n'
 import { copyMessage } from '../utils/whatsapp'
 import { sendMessage } from '../composables/useWaTarget'
 
-const emit = defineEmits<{ sent: [string]; compose: [] }>()
+const emit = defineEmits<{ sent: [string]; defer: [string]; compose: [] }>()
 
-const topic = computed(() => 'our project')
 const copied = ref(false)
 
 const position = computed(() => {
@@ -24,6 +32,19 @@ const currentNote = computed(() => {
   if (!item) return ''
   return state.contacts.find((c) => c.id === item.contactId)?.note ?? ''
 })
+
+/** When the head of the belt is due. Today's slots are the belt's own; later days are not. */
+const dueHint = computed(() => {
+  const item = nextUp.value
+  if (!item) return ''
+  return new Date(item.scheduledTime).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+})
+
+/** Messages scheduled for a later day — the part of the plan the belt cannot reach yet. */
+const laterCount = computed(() => futureQueue.value.length)
 
 async function launchNext() {
   const item = nextUp.value
@@ -41,7 +62,7 @@ async function skipNext() {
 
 function snoozeCurrent() {
   const item = nextUp.value
-  if (item) emit('sent', item.id)
+  if (item) emit('defer', item.id)
 }
 
 async function copyCurrent() {
@@ -76,11 +97,19 @@ async function copyCurrent() {
           class="rounded-full bg-stone-700/80 p-1.5 ring-1 ring-stone-600/50 transition active:scale-95"
           :aria-label="t('belt.reroll')"
           :title="t('belt.reroll')"
-          @click="rerollItem(nextUp.id, topic)"
+          @click="rerollItem(nextUp.id)"
         >
           <RefreshCw class="h-3.5 w-3.5 text-stone-300" />
         </button>
       </div>
+
+      <!-- When this one is due; a plan that spills onto later days says so plainly. -->
+      <p class="mt-1 flex items-center gap-1 text-[11px] font-semibold text-stone-400">
+        <Clock class="h-3 w-3" /> {{ dueHint }}
+        <span v-if="laterCount" class="text-stone-500">
+          · {{ t('belt.laterOn', { n: laterCount }) }}
+        </span>
+      </p>
 
       <p
         class="mt-2 rounded-2xl bg-stone-800/80 p-3 text-sm leading-relaxed ring-1 ring-stone-700/50"

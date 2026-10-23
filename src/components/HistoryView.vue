@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Check, X, Send, PenLine } from 'lucide-vue-next'
-import { state, sentCount, sentCountToday, pendingQueue } from '../store'
+import { state, sentCount, sentCountToday, queueList } from '../store'
 import { t } from '../utils/i18n'
 import { queueItemText } from '../utils/message'
 import { sendMessage } from '../composables/useWaTarget'
@@ -66,7 +66,7 @@ function reply(q: { phone: string; finalRenderedText: string }) {
         </p>
       </div>
       <div class="rounded-2xl bg-stone-900 p-2.5 shadow-md ring-1 ring-stone-700">
-        <p class="text-lg font-extrabold text-amber-400">{{ pendingQueue.length }}</p>
+        <p class="text-lg font-extrabold text-amber-400">{{ queueList.length }}</p>
         <p class="text-[10px] font-bold uppercase tracking-wider text-stone-400">
           {{ t('history.queuedNow') }}
         </p>

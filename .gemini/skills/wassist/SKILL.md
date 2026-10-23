@@ -46,10 +46,15 @@ Settings (the ⚙️ in the header). Four of these decide whether a large batch 
 
 | Setting | Default | Why it matters at scale |
 | :--- | :--- | :--- |
-| **Stagger (min)** | `5` | The throughput dial. Slot *N* lands at `start + (N−1) × stagger`. |
-| **First message at** | `09:30` | Base of every slot. If already past, the first slot becomes *now + 2 min*. |
+| **Stagger (min)** | `5` | The throughput dial. Slots land `stagger` minutes apart inside each day's window. |
+| **Schedule** | Mon–Sun, `09:30 → 21:00` | One row per weekday: on/off, plus its own **from** and **to** time. A switched-off day gets no slots; a full window rolls into the next open day. |
 | **Local prefix** | `852` | Bare **8-digit** numbers get this prepended. Other lengths pass through untouched. |
 | **Send via** | `Ask` | Android only. Pin to WhatsApp or WhatsApp Business to skip the system chooser each time. |
+
+The schedule row also reports the weekly **capacity** (`stagger` and the open windows, counted) and
+offers **Re-pace the N queued messages** — after changing the stagger or a window, that re-lays
+everything still pending into the new windows. Changing the schedule alone does *not* move items
+already queued.
 
 Also worth confirming: **Passive OS reminders** (on = every queued item gets a native alarm) and
 **History retention** (default 30 days, prunes sent/skipped at launch).
@@ -142,14 +147,23 @@ as spintax.
 
 Smart Paste → **Add N to queue** (or Compose → **Queue for N**).
 
-Queueing arms a passive OS alarm per item when reminders are on, and assigns each item a slot:
+Queueing arms a passive OS alarm per item when reminders are on, and assigns each item a slot from
+the weekly schedule:
 
 ```
-slot(i) = startTime + i × staggerMinutes
+for each open day, from max(window.from, now) to window.to, step staggerMinutes:
+    skip minutes already booked by a queued item
+until every person has a slot
 ```
 
-If `startTime` has already passed, the base becomes *now + 2 min*. Note that queueing **appends
-after today's existing pending items**, so a second batch lands behind the first.
+So a batch fills today's window, then continues at the *next open day's* `from` — never past
+midnight, never on a switched-off day, and never on a minute another queued item already holds.
+Note that queueing **appends after what is already booked**, so a second batch lands behind the
+first, possibly on a later day.
+
+The Smart Paste and Compose sheets show a **Sending plan** box before you commit: one line per day
+(`Today · 5 · 9:30 AM–9:50 AM`) and a fits / overflows verdict. Read it before adding a large batch —
+it is the cheapest way to see whether 500 people will take one evening or three weeks.
 
 Sends are handed to one app: on Android, `Send via` pins each launch to WhatsApp or WhatsApp
 Business; `Ask` shows a picker when both are installed.
@@ -158,21 +172,25 @@ Business; `Ask` shows a picker when both are installed.
 
 ## Step 4 — Work the conveyor belt
 
-Send tab → the belt shows **Next up (i/total)**, the rendered text, and the contact's note:
+Send tab → the belt shows **Next up (i/total)**, when it is due, the rendered text, and the contact's
+note. If part of the plan falls on a later day, the belt says **· N later** under the due time.
 
 | Button | Effect |
 | :--- | :--- |
 | **LAUNCH & SEND VIA WHATSAPP** | Opens WhatsApp with the text pre-filled → *the user still taps send inside WhatsApp.* Marks the item `sent`. |
 | **↻ (re-roll)** | Draws a fresh spintax wording for this one person, before launching. |
 | **Copy** | Clipboard, for when WhatsApp is unavailable. |
-| **Snooze** | Opens the follow-up chooser (2 days / tomorrow 9am / done). |
+| **Snooze** | Moves this queued item to **2 days out / tomorrow** (or leaves it). It is the *same* item re-timed — nothing is duplicated and nothing is marked sent. |
 | **Skip** | Marks `skipped`, cancels its alarm. |
 
-After each launch the follow-up sheet appears; the belt advances to the next item.
+After each launch a one-line bar under the belt offers **2 days / tomorrow / done / ✕**. It is
+deliberately *not* modal: a 120-person run would otherwise become 120 dialogs. Choosing 2 days or
+tomorrow re-queues the contact as a follow-up inside the next open sending window; ✕ or Done just
+closes it.
 
-**The belt is today-only.** Pending items scheduled for a future day are hidden from it and live
-under a separate *Upcoming* heading in the queue list. This is the single biggest operational trap
-on a large batch — see below.
+**The belt is today-only.** Pending items on a later day are hidden from it and live under that
+day's heading in the queue list. This is the single biggest operational trap on a large batch — see
+below.
 
 ---
 
@@ -198,22 +216,32 @@ on a large batch — see below.
 ## The today-only belt, and how many you can actually push in a day
 
 Only items whose slot falls on **today's local calendar date** appear on the belt. Slots are laid
-out from `startTime` at `staggerMinutes` apart, so a batch that runs past midnight silently pushes
-its tail into *Upcoming* — invisible until tomorrow.
+inside each day's window at `staggerMinutes` apart; when a window fills, the batch continues on the
+next open day. So a large batch is not broken — it is *scheduled across days*, and the queue list
+under the belt groups every pending item under its calendar day with that day's time range.
 
-Usable window from a 09:30 start ≈ 870 minutes:
+Per-day capacity, with default windows (`09:30 → 21:00` = 690 minutes a day):
 
-| Stagger | Headroom before midnight | Realistic batch |
+| Stagger | Slots per open day | Realistic batch |
 | :--- | :--- | :--- |
-| 1 min | ~870 | under ~850 |
-| 2 min | ~435 | under ~420 |
-| **5 min (default)** | **~174** | **under ~160** |
-| 10 min | ~87 | under ~80 |
+| 1 min | ~691 | under ~680 |
+| 2 min | ~346 | under ~340 |
+| **5 min (default)** | **~139** | **under ~135** |
+| 10 min | ~70 | under ~65 |
 
-Practical consequences for any batch over ~150 people:
+Multiply by the number of open days (7 by default → ~973 a week at 5 min) to get the weekly figure;
+the Settings row prints it for you.
 
-- Lower **Stagger** to 1–2 min for the run, or split the list across two days.
-- If the app was opened *after* `startTime`, the window is `midnight − now` — much smaller.
+Practical consequences for any batch over one day's capacity:
+
+- The **Sending plan** box in Smart Paste / Compose shows exactly which days the batch lands on and
+  whether it fits. Check it before adding.
+- To force more into one day, lower **Stagger**, widen that day's **to** time, or switch off the
+  days you do not want sends on at all.
+- If today's window is already past, today yields nothing and the batch starts on the next open day
+  — the plan box will say so.
+- Changing the schedule does **not** move items already queued. Press **Re-pace the N queued
+  messages** in Settings (or re-time a single row in the queue list) to lay them out again.
 - A queued item whose slot slipped more than an hour into the past while the app was closed is
   pulled forward to "now" on next launch, so the belt never stalls.
 - One OS alarm per item: a very large batch arms a very large number of alarms. If reminders
@@ -243,8 +271,9 @@ WhatsApp Business API is the sanctioned route for that.
 
 ## Worked example — 120 people, warm re-engagement
 
-1. **Settings** → Stagger `2` min (120 slots fits the day), First message `09:30`, Local prefix
-   `852`, Passive reminders on.
+1. **Settings** → Stagger `2` min (≈346 slots in a 09:30–21:00 day, so 120 lands in one day), the
+   weekly schedule left at its default windows (or weekend switched off if this is a work contact
+   list), Local prefix `852`, Passive reminders on.
 2. **Recipients** → prepare the list in the Smart Paste line format, one person per line.
 3. **Template** (Words tab) — build it for uniqueness. One `{ | }` slot per sentence, three options
    each:
@@ -264,7 +293,8 @@ WhatsApp Business API is the sanctioned route for that.
 6. **Queue** → Smart Paste, topic `the HK trip`, pick the template, confirm the preview, **Add 120
    to queue**.
 7. **Send** → work the belt; use **↻** whenever a wording looks off, **Skip** for anyone who
-   shouldn't get it, **Snooze** to set a follow-up.
+   shouldn't get it, **Snooze** to push a queued message to tomorrow or two days out, and the bar
+   under the belt to schedule a follow-up after a send.
 8. **Track** → History tab: sent / skipped / all filters, today vs. all-time stats, and a
    one-tap reply per row.
 

@@ -13,6 +13,14 @@ import type {
   Snippet,
 } from './types'
 import { renderTemplate } from './utils/spintax'
+import {
+  allocateSlots,
+  dayKeyOf,
+  defaultSchedule,
+  followUpMoment,
+  minuteKey,
+  normalizeSchedule,
+} from './utils/schedule'
 import { scheduleReminder, cancelReminder, ensureReminderPermission } from './utils/notify'
 import { loadState, createSaver } from './db'
 
@@ -21,9 +29,7 @@ function uid(): string {
 }
 
 export function todayKey(d = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate(),
-  ).padStart(2, '0')}`
+  return dayKeyOf(d)
 }
 
 function randomNotificationId(): number {
@@ -35,8 +41,8 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultPrefix: '852',
   whatsappMode: 'auto',
   waTarget: 'ask',
-  startTime: '09:30',
   staggerMinutes: 5,
+  schedule: defaultSchedule(),
   notificationsEnabled: true,
   activeTab: 'send',
   retentionDays: 30,
@@ -89,19 +95,7 @@ export function hydrate(saved: Partial<PersistedState> | null): PersistedState {
   const base = defaultState()
   if (!saved) return base
   const contacts = saved.contacts ?? []
-  const settings = { ...base.settings, ...(saved.settings ?? {}) }
-  // Guard against blobs written before the locale setting existed
-  // (or with a bogus locale from a hand-edited backup).
-  if (settings.locale !== 'en' && settings.locale !== 'zh-HK') {
-    settings.locale = base.settings.locale
-  }
-  if (
-    settings.waTarget !== 'ask' &&
-    settings.waTarget !== 'whatsapp' &&
-    settings.waTarget !== 'business'
-  ) {
-    settings.waTarget = base.settings.waTarget
-  }
+  const settings = normalizeSettings(saved.settings)
   return {
     contacts,
     templates: saved.templates?.length ? saved.templates : base.templates,
@@ -111,6 +105,56 @@ export function hydrate(saved: Partial<PersistedState> | null): PersistedState {
     favorites: (saved.favorites ?? []).filter((id) => contacts.some((c) => c.id === id)),
     snippets: saved.snippets?.length ? saved.snippets : base.snippets,
     settings,
+  }
+}
+
+/**
+ * Settings arrive from older builds, hand-edited backups, and (in the worst
+ * case) nothing at all — so every field is coerced here rather than trusted.
+ *
+ * A blob written before weekly windows existed carries a single `startTime`;
+ * that start time becomes the opening of every day's window, so upgrading does
+ * not silently reset the user's morning slot.
+ */
+export function normalizeSettings(saved?: Partial<Settings> | null): Settings {
+  const base = defaultState().settings
+  const raw = { ...base, ...(saved ?? {}) }
+  // Legacy single start time, still present on blobs from before `schedule`.
+  const legacyStart = (saved as { startTime?: unknown } | undefined)?.startTime
+  const schedule = Array.isArray(saved?.schedule)
+    ? saved.schedule
+    : defaultSchedule().map((d) => ({
+        ...d,
+        startTime: typeof legacyStart === 'string' ? legacyStart : d.startTime,
+      }))
+
+  // Guard against blobs written before the locale setting existed
+  // (or with a bogus locale from a hand-edited backup).
+  const locale: Settings['locale'] = raw.locale === 'en' || raw.locale === 'zh-HK' ? raw.locale : base.locale
+  const waTarget: Settings['waTarget'] =
+    raw.waTarget === 'whatsapp' || raw.waTarget === 'business' || raw.waTarget === 'ask'
+      ? raw.waTarget
+      : base.waTarget
+  const waMode: Settings['whatsappMode'] =
+    raw.whatsappMode === 'auto' || raw.whatsappMode === 'native' || raw.whatsappMode === 'web'
+      ? raw.whatsappMode
+      : base.whatsappMode
+
+  const stagger = Number(raw.staggerMinutes)
+  return {
+    locale,
+    defaultPrefix: String(raw.defaultPrefix ?? base.defaultPrefix).replace(/\D/g, '') || base.defaultPrefix,
+    whatsappMode: waMode,
+    waTarget,
+    staggerMinutes: Number.isFinite(stagger) ? Math.min(60, Math.max(1, Math.round(stagger))) : base.staggerMinutes,
+    schedule: normalizeSchedule(schedule),
+    notificationsEnabled: raw.notificationsEnabled ?? base.notificationsEnabled,
+    activeTab: (['send', 'people', 'words', 'history'] as const).includes(raw.activeTab)
+      ? raw.activeTab
+      : base.activeTab,
+    retentionDays: Number.isFinite(Number(raw.retentionDays))
+      ? Math.max(0, Math.round(Number(raw.retentionDays)))
+      : base.retentionDays,
   }
 }
 
@@ -147,13 +191,26 @@ export function isToday(iso: string): boolean {
 }
 
 /**
- * The conveyor belt only ever runs *today's* due messages. Anything scheduled
- * for a later day stays queued (see `queueList`) but never blocks the belt.
+ * Today's pending items — what the belt runs. A plan that overflows onto later
+ * days keeps that tail visible in the queue list (and summarised on the belt),
+ * but never lets it be tapped through out of order.
  */
 export const pendingQueue = computed(() =>
   state.queue
     .filter((q) => q.status === 'pending' && isToday(q.scheduledTime))
     .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)),
+)
+
+/** Everything still owed (today, later days, snoozed), in time order. */
+export const queueList = computed(() =>
+  state.queue
+    .filter((q) => q.status === 'pending' || q.status === 'snoozed')
+    .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)),
+)
+
+/** Owed items that fall on a later day — the part of a batch still waiting its turn. */
+export const futureQueue = computed(() =>
+  queueList.value.filter((q) => !isToday(q.scheduledTime)),
 )
 
 export const nextUp = computed<QueueItem | null>(() => pendingQueue.value[0] ?? null)
@@ -170,13 +227,6 @@ export const favoriteContacts = computed(() =>
   state.favorites
     .map((id) => state.contacts.find((c) => c.id === id))
     .filter((c): c is Contact => Boolean(c)),
-)
-
-/** Everything still worth showing in the queue list (today, later days, snoozed). */
-export const queueList = computed(() =>
-  [...state.queue]
-    .filter((q) => q.status === 'pending' || q.status === 'snoozed')
-    .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)),
 )
 
 /** Pending items scheduled for a later day — grouped under "Upcoming" in the queue. */
@@ -314,14 +364,51 @@ function varsFor(contact: Contact, topic: string): Record<string, string> {
   }
 }
 
-/** First slot today at settings.startTime (or now + 2 min if that has passed), then staggered. */
-export function nextSlot(index: number): Date {
-  const [h, m] = state.settings.startTime.split(':').map((n) => Number.parseInt(n, 10))
-  const start = new Date()
-  start.setHours(Number.isFinite(h) ? h! : 9, Number.isFinite(m) ? m! : 30, 0, 0)
-  if (start.getTime() < Date.now()) start.setTime(Date.now() + 2 * 60_000)
-  start.setMinutes(start.getMinutes() + index * state.settings.staggerMinutes)
-  return start
+/** Slots already spoken for, so a second batch never double-books one. */
+export function bookedSlots(exclude?: Set<string>): Set<string> {
+  const taken = new Set<string>()
+  for (const q of state.queue) {
+    if (exclude?.has(q.id)) continue
+    if (q.status === 'pending' || q.status === 'snoozed') {
+      taken.add(minuteKey(new Date(q.scheduledTime)))
+    }
+  }
+  return taken
+}
+
+export interface SlotPreview {
+  slots: Date[]
+  /** True when the batch needs more room than the schedule provides. */
+  truncated: boolean
+}
+
+/**
+ * Where a batch of `count` messages would land, honouring the weekly windows.
+ * Used both for queueing and for the "how will this be paced?" preview.
+ *
+ * `excludeIds` drops items from the booking set — re-pacing passes the very
+ * items being moved, so their old slots do not block them.
+ */
+export function planSlots(
+  count: number,
+  from = new Date(),
+  excludeIds?: Set<string>,
+): SlotPreview {
+  if (count <= 0) return { slots: [], truncated: false }
+  const slots = allocateSlots({
+    schedule: state.settings.schedule,
+    staggerMinutes: state.settings.staggerMinutes,
+    from,
+    count,
+    taken: bookedSlots(excludeIds),
+  })
+  return { slots, truncated: slots.length < count }
+}
+
+/** The first slot a single new message would occupy, counting `index` items ahead. */
+export function nextSlot(index = 0): Date {
+  const { slots } = planSlots(index + 1)
+  return slots[Math.min(index, slots.length - 1)] ?? new Date(Date.now() + 2 * 60_000)
 }
 
 export function buildQueue(
@@ -333,7 +420,7 @@ export function buildQueue(
     options.rawText ??
     state.templates.find((t) => t.id === options.templateId)?.content ??
     activeTemplate().content
-  const offset = pendingQueue.value.length
+  const { slots } = planSlots(contactIds.length)
   const items: QueueItem[] = contactIds.map((cid, i) => {
     const c = state.contacts.find((x) => x.id === cid)
     if (!c) throw new Error(`Contact not found: ${cid}`)
@@ -345,7 +432,10 @@ export function buildQueue(
       rawTemplate: text,
       finalRenderedText:
         options.overrides?.[cid]?.trim() || renderTemplate(text, varsFor(c, topic)),
-      scheduledTime: nextSlot(offset + i).toISOString(),
+      topic: topic || undefined,
+      // A schedule that cannot fit the batch holds the overflow at the last
+      // available slot rather than dropping it.
+      scheduledTime: (slots[i] ?? slots[slots.length - 1] ?? new Date(Date.now() + 2 * 60_000)).toISOString(),
       status: 'pending' as QueueStatus,
       notificationId: randomNotificationId(),
     }
@@ -376,13 +466,14 @@ export function renderForContact(contact: Contact, rawText: string): string {
 }
 
 /** Re-roll the spintax for one queued item (new wording, same recipient). */
-export function rerollItem(id: string, topic = ''): void {
+export function rerollItem(id: string, topic?: string): void {
   const item = state.queue.find((q) => q.id === id)
   if (!item) return
+  const runTopic = topic ?? item.topic ?? ''
   const contact = state.contacts.find((c) => c.id === item.contactId)
   const vars = contact
-    ? varsFor(contact, topic)
-    : { name: item.name.split(' ')[0] ?? item.name, fullname: item.name, note: '', topic, time: '' }
+    ? varsFor(contact, runTopic)
+    : { name: item.name.split(' ')[0] ?? item.name, fullname: item.name, note: '', topic: runTopic, time: '' }
   item.finalRenderedText = renderTemplate(item.rawTemplate, vars)
 }
 
@@ -421,10 +512,10 @@ async function scheduleFollowUpReminder(item: QueueItem, at: Date): Promise<void
 
 /** Re-arm every pending alarm (used after settings changes / app resume). */
 export async function rescheduleAllReminders(): Promise<void> {
-  for (const item of pendingQueue.value) {
+  for (const item of queueList.value) {
     if (item.notificationId) await cancelReminder(item.notificationId)
   }
-  await scheduleQueueReminders(pendingQueue.value)
+  await scheduleQueueReminders(queueList.value)
 }
 
 // ---------- queue transitions ----------
@@ -447,25 +538,26 @@ export async function skipItem(id: string): Promise<void> {
 /**
  * Feature 2 — 1-click follow-up.
  * `days = 0` means "done, no follow-up"; otherwise the same contact re-enters
- * the queue at 9am N days out with a fresh spintax render, plus a native alarm.
+ * the queue at the start of that day's sending window (skipping days that are
+ * switched off) with a fresh spintax render, plus a native alarm.
  */
 export async function snoozeFollowUp(
   itemId: string,
   days: number,
-  topic = '',
+  topic?: string,
 ): Promise<QueueItem | undefined> {
   const src = state.queue.find((x) => x.id === itemId)
   if (!src) return undefined
   if (days <= 0) return src
 
-  const at = new Date()
-  at.setDate(at.getDate() + days)
-  at.setHours(9, 0, 0, 0)
+  const plan = followUpMoment(days, state.settings.schedule)
+  const at = plan.at
+  const runTopic = topic ?? src.topic ?? ''
 
   const contact = state.contacts.find((c) => c.id === src.contactId)
   const vars = contact
-    ? varsFor(contact, topic)
-    : { name: src.name.split(' ')[0] ?? src.name, fullname: src.name, note: '', topic, time: '' }
+    ? varsFor(contact, runTopic)
+    : { name: src.name.split(' ')[0] ?? src.name, fullname: src.name, note: '', topic: runTopic, time: '' }
 
   const followUp: QueueItem = {
     id: uid(),
@@ -474,14 +566,83 @@ export async function snoozeFollowUp(
     phone: src.phone,
     rawTemplate: src.rawTemplate,
     finalRenderedText: renderTemplate(src.rawTemplate, vars),
+    topic: src.topic,
     scheduledTime: at.toISOString(),
     status: 'pending',
-    followUpDays: days,
+    followUpDays: plan.daysAhead,
     notificationId: randomNotificationId(),
   }
   state.queue.push(followUp)
   await scheduleFollowUpReminder(followUp, at)
   return followUp
+}
+
+/**
+ * Re-lay every pending item into the current weekly windows, in queue order.
+ * Called when the schedule or the stagger changes, so an edit takes effect
+ * immediately instead of only for batches queued afterwards. Sent/skipped
+ * history keeps its original timestamps.
+ */
+export async function reschedulePending(): Promise<number> {
+  const pending = state.queue
+    .filter((q) => q.status === 'pending')
+    .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime))
+  if (!pending.length) return 0
+
+  // Their own old slots must not count as taken, or the batch blocks itself.
+  const moving = new Set(pending.map((q) => q.id))
+  const { slots } = planSlots(pending.length, new Date(), moving)
+  pending.forEach((q, i) => {
+    const at = slots[i] ?? slots[slots.length - 1]
+    if (at) q.scheduledTime = at.toISOString()
+  })
+  await rescheduleAllReminders()
+  return pending.length
+}
+
+/**
+ * Defer a queued message N days out: the same item moves, re-wording included.
+ * This is the belt's **Snooze** — nothing has been sent, so no new item is
+ * created and the original does not stay behind at the head of the belt.
+ * `days = 0` is a no-op, so the caller can use it as "leave it alone".
+ */
+export async function deferItem(
+  itemId: string,
+  days: number,
+  topic?: string,
+): Promise<QueueItem | undefined> {
+  const item = state.queue.find((x) => x.id === itemId)
+  if (!item || days <= 0) return item
+
+  const plan = followUpMoment(days, state.settings.schedule)
+  const runTopic = topic ?? item.topic ?? ''
+  const contact = state.contacts.find((c) => c.id === item.contactId)
+  const vars = contact
+    ? varsFor(contact, runTopic)
+    : { name: item.name.split(' ')[0] ?? item.name, fullname: item.name, note: '', topic: runTopic, time: '' }
+
+  item.scheduledTime = plan.at.toISOString()
+  item.followUpDays = plan.daysAhead
+  item.finalRenderedText = renderTemplate(item.rawTemplate, vars)
+  if (item.notificationId) await cancelReminder(item.notificationId)
+  await scheduleFollowUpReminder(item, plan.at)
+  return item
+}
+
+/** Move one item to a specific moment (the queue row's time picker). */
+export async function setItemTime(id: string, at: Date): Promise<void> {
+  const q = state.queue.find((x) => x.id === id)
+  if (!q) return
+  q.scheduledTime = at.toISOString()
+  if (q.notificationId) await cancelReminder(q.notificationId)
+  if (state.settings.notificationsEnabled) {
+    await scheduleReminder({
+      id: q.notificationId ?? (q.notificationId = randomNotificationId()),
+      title: `Message ${q.name} 📩`,
+      body: q.finalRenderedText.slice(0, 120),
+      at,
+    })
+  }
 }
 
 /** Items whose slot passed while the app was closed become "now" so the belt never stalls. */
